@@ -2,9 +2,12 @@ name: Monitor horarios moto
 
 on:
   schedule:
-    # Cada 10 minutos. GitHub retrasa los cron 5-20 min en horas pico, así que
-    # en la práctica la revisión cae cada 10-25 min: es un piso, no un reloj.
-    - cron: '*/10 * * * *'
+    # 4 veces al día, no 144. GitHub desprioriza los crons frecuentes bajo
+    # carga (un `*/10` en repo nuevo puede no correr nunca), pero los crons
+    # espaciados sí los respeta. Cada corrida es un job largo que revisa cada
+    # 10 min por dentro, así que la cadencia real sí es de 10 minutos.
+    # Minuto 7 a propósito: en :00 el mundo entero programa sus jobs.
+    - cron: '7 */6 * * *'
   workflow_dispatch:
     inputs:
       modo:
@@ -15,20 +18,25 @@ on:
           - revisar
           - test
           - dry-run
+          - loop
 
 # Necesario para que el job pueda commitear state.json de vuelta al repo.
 permissions:
   contents: write
 
-# Las corridas se serializan: dos revisiones a la vez pelearían por state.json.
+# Un carril por tipo de evento. Las programadas se serializan entre sí (dos
+# revisiones a la vez pelearían por state.json), pero una ejecución manual no
+# queda encolada detrás de un job de 6 horas.
 concurrency:
-  group: monitor-horarios
+  group: monitor-horarios-${{ github.event_name }}
   cancel-in-progress: false
 
 jobs:
   revisar:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Red de seguridad por debajo del límite duro de GitHub (360 min). El loop
+    # se cierra solo a los 345 min, así que esto no debería activarse nunca.
+    timeout-minutes: 355
 
     steps:
       - name: Clonar repo
@@ -66,11 +74,18 @@ jobs:
           MONTHS_AHEAD: ${{ vars.MONTHS_AHEAD }}
           EXCLUDE_DATES: ${{ vars.EXCLUDE_DATES }}
         run: |
-          case "${{ github.event.inputs.modo || 'revisar' }}" in
-            test)    node monitor.js --test ;;
-            dry-run) node monitor.js --dry-run ;;
-            *)       node monitor.js ;;
-          esac
+          # Programado: un job largo que revisa cada 10 min durante 5h45.
+          # Manual: lo que elijas en el desplegable.
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            node monitor.js --loop 10 --max-runtime 345
+          else
+            case "${{ github.event.inputs.modo || 'revisar' }}" in
+              test)    node monitor.js --test ;;
+              dry-run) node monitor.js --dry-run ;;
+              loop)    node monitor.js --loop 10 --max-runtime 345 ;;
+              *)       node monitor.js ;;
+            esac
+          fi
 
       - name: Guardar state.json
         # `always()` para no perder el estado si el paso anterior falló a medias.

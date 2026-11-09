@@ -468,7 +468,15 @@ async function runCheck(cfg, { dryRun = false } = {}) {
 
 async function runLoop(cfg, minutos, opts) {
   const intervalo = Math.max(1, minutos) * 60000;
-  log(`Modo loop: revisión cada ${minutos} min. Ctrl+C para salir.`);
+  // Presupuesto de tiempo: permite que el loop termine por su cuenta antes de
+  // que GitHub Actions mate el job por timeout. Sin esto, cada corrida acabaría
+  // "cancelled" y un fallo real sería indistinguible del final normal.
+  const presupuesto = opts.maxRuntimeMin > 0 ? opts.maxRuntimeMin : 0;
+  const limite = presupuesto > 0 ? Date.now() + presupuesto * 60000 : null;
+  log(
+    `Modo loop: revisión cada ${minutos} min` +
+      (limite ? `, hasta ${presupuesto} min en total.` : '. Ctrl+C para salir.'),
+  );
   let fallosSeguidos = 0;
 
   for (;;) {
@@ -492,6 +500,13 @@ async function runLoop(cfg, minutos, opts) {
         fallosSeguidos = 0; // reinicia para no spamear en cada revisión
       }
     }
+
+    // Si la próxima revisión caería fuera del presupuesto, salir ahora y en
+    // verde: así el paso que guarda state.json corre con normalidad.
+    if (limite !== null && Date.now() + intervalo > limite) {
+      log(`Presupuesto de ${presupuesto} min agotado; cierro el loop limpiamente.`);
+      return;
+    }
     await sleep(intervalo);
   }
 }
@@ -499,10 +514,25 @@ async function runLoop(cfg, minutos, opts) {
 // --------------------------------------------------------------------------- CLI
 
 function parseArgs(argv) {
-  const opts = { mode: 'once', minutes: 10, dryRun: false };
+  const envMax = Number.parseInt(process.env.MAX_RUNTIME_MIN ?? '', 10);
+  const opts = {
+    mode: 'once',
+    minutes: 10,
+    dryRun: false,
+    maxRuntimeMin: Number.isFinite(envMax) && envMax > 0 ? envMax : 0,
+  };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--loop') {
+    if (a === '--max-runtime') {
+      const n = Number.parseInt(argv[i + 1] ?? '', 10);
+      if (Number.isFinite(n) && n > 0) {
+        opts.maxRuntimeMin = n;
+        i++;
+      }
+    } else if (a.startsWith('--max-runtime=')) {
+      const n = Number.parseInt(a.slice('--max-runtime='.length), 10);
+      if (Number.isFinite(n) && n > 0) opts.maxRuntimeMin = n;
+    } else if (a === '--loop') {
       opts.mode = 'loop';
       const n = Number.parseInt(argv[i + 1] ?? '', 10);
       if (Number.isFinite(n) && n > 0) {
@@ -534,6 +564,10 @@ Monitor de horarios de una agenda de citas de Google Calendar
   node monitor.js --loop 10    revisa cada 10 minutos
   node monitor.js --test       envía un mensaje de prueba a Telegram
   node monitor.js --dry-run    revisa pero imprime el mensaje en vez de enviarlo
+
+  --max-runtime N              con --loop, cierra el loop limpiamente tras N
+                               minutos (o con MAX_RUNTIME_MIN). Pensado para
+                               que GitHub Actions no mate el job por timeout.
 
 Variables de entorno (o archivo .env en el directorio actual):
   SCHEDULE_URL         obligatorio: URL de la agenda a monitorear
@@ -581,7 +615,10 @@ async function main() {
   }
 
   if (opts.mode === 'loop') {
-    await runLoop(cfg, opts.minutes, { dryRun: opts.dryRun });
+    await runLoop(cfg, opts.minutes, {
+      dryRun: opts.dryRun,
+      maxRuntimeMin: opts.maxRuntimeMin,
+    });
     return;
   }
 

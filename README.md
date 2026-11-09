@@ -40,9 +40,13 @@ npx playwright install chromium
 cp .env.example .env     # y pon la URL, tu token y tu chat id
 
 node monitor.js            # una revisión y sale
-node monitor.js --loop 10  # revisa cada 10 minutos
+node monitor.js --loop 10  # revisa cada 10 minutos, indefinidamente
 node monitor.js --test     # mensaje de prueba a Telegram
 node monitor.js --dry-run  # revisa e imprime el mensaje, sin enviarlo ni tocar el estado
+
+# cierra el loop limpiamente tras N minutos (o con MAX_RUNTIME_MIN).
+# Lo usa el workflow para que GitHub no mate el job por timeout.
+node monitor.js --loop 10 --max-runtime 345
 ```
 
 En `--loop`, si falla 3 veces seguidas te avisa por Telegram y sigue
@@ -71,8 +75,15 @@ La zona horaria usada para interpretar y mostrar los horarios está fijada en
 ## Despliegue en GitHub Actions
 
 El workflow [`.github/workflows/monitor.yml`](.github/workflows/monitor.yml)
-corre cada 10 minutos y commitea `state.json` de vuelta al repo para recordar
-qué horarios ya avisó.
+arranca **4 veces al día**, y cada corrida es un job largo que revisa **cada 10
+minutos durante 5h45**. Al terminar commitea `state.json` de vuelta al repo
+para recordar qué horarios ya avisó.
+
+Está así a propósito. El cron de GitHub es *best-effort* y desprioriza los
+crons frecuentes bajo carga, hasta el punto de que un `*/10` en un repo nuevo
+puede no correr **ni una vez**. Los crons espaciados sí se respetan, así que se
+le pide poco a GitHub y el intervalo corto lo gobierna el propio proceso con
+`--loop 10 --max-runtime 345`.
 
 1. Crea el repo en GitHub (**público**: en repos privados cada corrida consume
    de los 2000 min/mes gratis y a esta frecuencia se agotarían en una semana).
@@ -89,9 +100,17 @@ qué horarios ya avisó.
 
 ### Cosas que conviene saber
 
-- **El cron no es exacto.** GitHub retrasa los *scheduled workflows* entre 5 y
-  20 minutos en horas pico, y puede saltarse corridas si el repo lleva tiempo
-  sin actividad. `*/10` es un piso, no una garantía.
+- **El arranque puede retrasarse**, pero el intervalo no. GitHub puede empezar
+  el job más tarde de su minuto 7; una vez arrancado, los 10 minutos los
+  controla el proceso y sí son exactos.
+- **Si un job muere a mitad queda un hueco** hasta el siguiente arranque: en el
+  peor caso hasta 6 horas sin revisar. Y como `state.json` se commitea al
+  terminar, una caída abrupta puede provocar un aviso repetido de un horario ya
+  avisado — molesto, pero nunca un cupo perdido.
+- El job tiene `timeout-minutes: 355` como red de seguridad por debajo del
+  límite duro de GitHub (360 min). El loop se cierra solo a los 345, así que
+  ese timeout no debería activarse nunca: si ves una corrida *cancelled*, es
+  señal de que algo se colgó.
 - **Los crons se desactivan solos** en repos sin commits durante 60 días. Como
   el workflow commitea `state.json` cuando cambia la disponibilidad, basta con
   que la agenda se mueva de vez en cuando; si no, entra y ejecútalo a mano.
