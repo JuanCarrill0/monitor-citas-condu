@@ -1,0 +1,19 @@
+{
+  "name": "monitor-practica-moto",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Avisa por Telegram cuando se abren horarios nuevos en una agenda de citas de Google Calendar",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "check": "node monitor.js",
+    "loop": "node monitor.js --loop 10",
+    "test:telegram": "node monitor.js --test",
+    "dry": "node monitor.js --dry-run"
+  },
+  "dependencies": {
+    "playwright": "^1.65.0"
+  }
+}

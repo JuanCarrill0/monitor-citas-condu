@@ -1,0 +1,7 @@
+# LF en el repo y en el working tree. El bloque `run:` del workflow se ejecuta
+# en bash sobre Linux y los \r de Windows lo romperían.
+* text=auto eol=lf
+*.yml text eol=lf
+*.js  text eol=lf
+*.json text eol=lf
+*.md  text eol=lf

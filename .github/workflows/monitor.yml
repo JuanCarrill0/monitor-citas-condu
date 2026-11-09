@@ -1,0 +1,101 @@
+name: Monitor horarios moto
+
+on:
+  schedule:
+    # Cada 10 minutos. GitHub retrasa los cron 5-20 min en horas pico, así que
+    # en la práctica la revisión cae cada 10-25 min: es un piso, no un reloj.
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+    inputs:
+      modo:
+        description: 'Qué ejecutar'
+        type: choice
+        default: revisar
+        options:
+          - revisar
+          - test
+          - dry-run
+
+# Necesario para que el job pueda commitear state.json de vuelta al repo.
+permissions:
+  contents: write
+
+# Las corridas se serializan: dos revisiones a la vez pelearían por state.json.
+concurrency:
+  group: monitor-horarios
+  cancel-in-progress: false
+
+jobs:
+  revisar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Clonar repo
+        uses: actions/checkout@v4
+
+      - name: Instalar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Cache del navegador
+        id: cache-navegador
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Instalar Chromium
+        # Con cache hit no descarga nada, pero igual hay que asegurar las
+        # librerías del sistema, así que se ejecuta siempre.
+        run: npx playwright install --with-deps chromium
+
+      - name: Revisar horarios
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          # Secret, no variable: con esta URL cualquiera puede reservar, y las
+          # variables de repo son visibles para cualquiera en un repo público.
+          SCHEDULE_URL: ${{ secrets.SCHEDULE_URL }}
+          SCHEDULE_TITLE: ${{ secrets.SCHEDULE_TITLE }}
+          MONTHS_AHEAD: ${{ vars.MONTHS_AHEAD }}
+          EXCLUDE_DATES: ${{ vars.EXCLUDE_DATES }}
+        run: |
+          case "${{ github.event.inputs.modo || 'revisar' }}" in
+            test)    node monitor.js --test ;;
+            dry-run) node monitor.js --dry-run ;;
+            *)       node monitor.js ;;
+          esac
+
+      - name: Guardar state.json
+        # `always()` para no perder el estado si el paso anterior falló a medias.
+        if: always() && github.event.inputs.modo != 'test'
+        run: |
+          # --porcelain también detecta el archivo sin trackear, que git diff
+          # se saltaría en silencio.
+          if [ -z "$(git status --porcelain -- state.json)" ]; then
+            echo "state.json sin cambios; no hay nada que commitear."
+            exit 0
+          fi
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state.json
+          git commit -m "chore: actualizar horarios vistos [skip ci]"
+
+          # Si otra corrida (o un push tuyo) llegó primero, rebase y reintenta.
+          for intento in 1 2 3; do
+            if git push; then
+              echo "Estado guardado en el intento $intento."
+              exit 0
+            fi
+            echo "Push falló (intento $intento); rebase sobre el remoto."
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}" || true
+          done
+
+          echo "::warning::No pude guardar state.json tras 3 intentos. La próxima revisión podría repetir un aviso."
