@@ -1,7 +1,19 @@
 {
-  "updatedAt": "2026-11-12T17:44:18.730Z",
+  "updatedAt": "2026-11-13T21:25:56.529Z",
   "timeZone": "America/Bogota",
-  "count": 0,
-  "slots": [],
-  "legible": []
+  "count": 5,
+  "slots": [
+    1796230800000,
+    1796245200000,
+    1796302800000,
+    1796331600000,
+    1796346000000
+  ],
+  "legible": [
+    "mié, 2 de dic, 12:00 p. m.",
+    "mié, 2 de dic, 4:00 p. m.",
+    "jue, 3 de dic, 8:00 a. m.",
+    "jue, 3 de dic, 4:00 p. m.",
+    "jue, 3 de dic, 8:00 p. m."
+  ]
 }
