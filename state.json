@@ -1,25 +1,7 @@
 {
-  "updatedAt": "2026-11-19T07:18:23.953Z",
+  "updatedAt": "2026-11-19T21:18:29.049Z",
   "timeZone": "America/Bogota",
-  "count": 8,
-  "slots": [
-    1795212000000,
-    1795611600000,
-    1796418000000,
-    1796641200000,
-    1796814000000,
-    1796821200000,
-    1796828400000,
-    1796835600000
-  ],
-  "legible": [
-    "vie, 20 de nov, 5:00 p. m.",
-    "mié, 25 de nov, 8:00 a. m.",
-    "vie, 4 de dic, 4:00 p. m.",
-    "lun, 7 de dic, 6:00 a. m.",
-    "mié, 9 de dic, 6:00 a. m.",
-    "mié, 9 de dic, 8:00 a. m.",
-    "mié, 9 de dic, 10:00 a. m.",
-    "mié, 9 de dic, 12:00 p. m."
-  ]
+  "count": 0,
+  "slots": [],
+  "legible": []
 }
