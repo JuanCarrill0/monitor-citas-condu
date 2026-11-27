@@ -1,11 +1,7 @@
 {
-  "updatedAt": "2026-11-27T02:26:52.386Z",
+  "updatedAt": "2026-11-27T11:24:12.048Z",
   "timeZone": "America/Bogota",
-  "count": 1,
-  "slots": [
-    1796072400000
-  ],
-  "legible": [
-    "lun, 30 de nov, 4:00 p. m."
-  ]
+  "count": 0,
+  "slots": [],
+  "legible": []
 }
